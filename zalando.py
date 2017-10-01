@@ -185,9 +185,8 @@ def handle_generate(args):
 
 def handle_print(args):
     store = load_list()
-    material = 'elastan'
 
-    selective_print(store.items, material, store.base, args.out)
+    selective_print(store.items, args.material, store.base, args.out)
     pass
 
 
@@ -208,7 +207,6 @@ def get_material_names(materials: typing.List[str]) -> typing.Iterable[str]:
             print('Invalid material', m)
 
 
-
 def handle_list(args):
     store = load_list()
 
@@ -221,6 +219,7 @@ def handle_list(args):
     counted = collections.Counter(materials)
     for name, count in counted.items():
         print('{}: {}'.format(name, count))
+
 
 
 def main():
@@ -240,6 +239,7 @@ def main():
     sub.set_defaults(func=handle_search)
 
     sub = subs.add_parser('print')
+    sub.add_argument('material')
     sub.add_argument('out', type=argparse.FileType('w'))
     sub.set_defaults(func=handle_print)
 
