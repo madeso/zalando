@@ -9,12 +9,20 @@ import collections
 
 #  class="catalogArticlesList_imageBox"
 resubsite = re.compile(r'<a class="z-nvg-cognac_imageLink-OPGGa" href="([^"]+)"')
-resubsitenext = re.compile(r'<a class="catalogPagination_button catalogPagination_button-next"\s+href="([^"]+)"')
+resubsite_alt = re.compile(r'href="([^"]+)"\s+class="catalogArticlesList_imageBox"')
+# "next_page_path":"\u002Fman-klader-jeans\u002F?p=2"
+resubsitenext_json = re.compile(r'"next_page_path":"([^"]+)')
+# <a class="catalogPagination_button catalogPagination_button-next" href="/man-klader-jeans/?p=2">
+resubsitenext = re.compile(r'catalogPagination_button-next" href="([^"]+)')
 # data":[{"name":"Material","values":"98% Bomull, 2% Elastan"}]
 redata = re.compile(r'"Material\: ([^"]+)')
 regallery = re.compile(r'"gallery":"([^"]+)"')
 renumber = re.compile(r'[0123456789]+')
 rematerial = re.compile(r'[0123456789]+% ([a-zA-Z]+)')
+
+
+def clean_json_string(url: str) -> str:
+    return url.replace('\\u002F', '/')
 
 
 def geturl(link: str) -> str:
@@ -27,11 +35,26 @@ def geturl(link: str) -> str:
 def find_all_pages(base: str, url: str) -> typing.Iterable[str]:
     print('Getting subsites from', url)
     data = geturl(base + url)
-    # print(data[0:50])
+    count = 0
     for r in resubsite.finditer(data):
+        count += 1
         yield r.group(1)
+    for r in resubsite_alt.finditer(data):
+        count += 1
+        yield r.group(1)
+    #  print(data.find('next_page_path'))
+    print(count)
+    if count == -75:
+        with open('url.html', 'w') as f:
+            f.write(data)
+    for r in resubsitenext_json.finditer(data):
+        next = clean_json_string(r.group(1))
+        print('Grabbing more... (json)')
+        for s in find_all_pages(base, next):
+            yield s
     for r in resubsitenext.finditer(data):
         next = r.group(1)
+        print('Grabbing more... (html)')
         for s in find_all_pages(base, next):
             yield s
 
@@ -175,12 +198,22 @@ def load_list() -> Store:
 
 
 def handle_generate(args):
+    # root: str
+    root = args.url
     base = 'https://www.zalando.se'
     url = '/man-klader-byxor-shorts/?upper_material=bomull'
+    print(root)
+
+    if not root.startswith(base):
+        print('Invalid url')
+        return
+
+    url = root[len(base):]
+    if url.endswith('/'):
+        url = url[:len(url)-1]
 
     items = collect_data(base, url)
     store_list(Store(items, base))
-    pass
 
 
 def handle_print(args):
@@ -229,6 +262,7 @@ def main():
     subs = parser.add_subparsers(help='sub command')
 
     sub = subs.add_parser('generate')
+    sub.add_argument('url')
     sub.set_defaults(func=handle_generate)
 
     sub = subs.add_parser('list')
