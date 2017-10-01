@@ -5,7 +5,7 @@ import re
 import argparse
 import typing
 import json
-
+import collections
 
 #  class="catalogArticlesList_imageBox"
 resubsite = re.compile(r'<a class="z-nvg-cognac_imageLink-OPGGa" href="([^"]+)"')
@@ -14,6 +14,7 @@ resubsitenext = re.compile(r'<a class="catalogPagination_button catalogPaginatio
 redata = re.compile(r'"Material\: ([^"]+)')
 regallery = re.compile(r'"gallery":"([^"]+)"')
 renumber = re.compile(r'[0123456789]+')
+rematerial = re.compile(r'[0123456789]+% ([a-zA-Z]+)')
 
 
 def geturl(link: str) -> str:
@@ -190,12 +191,36 @@ def handle_print(args):
     pass
 
 
+def handle_search(args):
+    store = load_list()
+    data = list(all_with_material(store.items, args.material))
+    print('{} items found'.format(len(data)))
+    for found in data:
+        print(store.base + found.url)
+
+
+def get_material_names(materials: typing.List[str]) -> typing.Iterable[str]:
+    for m in materials:
+        ga = rematerial.search(m)
+        if ga is not None:
+            yield ga.group(1)
+        else:
+            print('Invalid material', m)
+
+
+
 def handle_list(args):
     store = load_list()
+
+    materials = []
+
     for it in store.items:
-        print(it.url)
-        print(it.materials)
-        print()
+        for mat in get_material_names(it.materials):
+            materials.append(mat)
+
+    counted = collections.Counter(materials)
+    for name, count in counted.items():
+        print('{}: {}'.format(name, count))
 
 
 def main():
@@ -209,6 +234,10 @@ def main():
 
     sub = subs.add_parser('list')
     sub.set_defaults(func=handle_list)
+
+    sub = subs.add_parser('search')
+    sub.add_argument('material')
+    sub.set_defaults(func=handle_search)
 
     sub = subs.add_parser('print')
     sub.add_argument('out', type=argparse.FileType('w'))
