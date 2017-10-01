@@ -2,55 +2,46 @@
 
 import urllib.request
 import re
-import itertools
+import argparse
+import typing
+import json
 
-base = 'https://www.zalando.se'
 
-def geturl(link):
+#  class="catalogArticlesList_imageBox"
+resubsite = re.compile(r'<a class="z-nvg-cognac_imageLink-OPGGa" href="([^"]+)"')
+resubsitenext = re.compile(r'<a class="catalogPagination_button catalogPagination_button-next"\s+href="([^"]+)"')
+# data":[{"name":"Material","values":"98% Bomull, 2% Elastan"}]
+redata = re.compile(r'"Material\: ([^"]+)')
+regallery = re.compile(r'"gallery":"([^"]+)"')
+renumber = re.compile(r'[0123456789]+')
+
+
+def geturl(link: str) -> str:
+    print('Requesting url ', link)
     with urllib.request.urlopen(link) as f:
         data = f.read()
         return data.decode('utf-8')
 
-#  class="catalogArticlesList_imageBox"
-resubsite = re.compile(r'<a href="([^"]+)"\s+class="catalogArticlesList_imageBox')
-resubsitenext = re.compile(r'<a class="catalogPagination_button catalogPagination_button-next"\s+href="([^"]+)"')
 
-def getsubsites(url):
+def find_all_pages(base: str, url: str) -> typing.Iterable[str]:
+    print('Getting subsites from', url)
     data = geturl(base + url)
+    # print(data[0:50])
     for r in resubsite.finditer(data):
         yield r.group(1)
     for r in resubsitenext.finditer(data):
         next = r.group(1)
-        for s in getsubsites(next):
+        for s in find_all_pages(base, next):
             yield s
 
 
-# data":[{"name":"Material","values":"98% Bomull, 2% Elastan"}]
-redata = re.compile(r'data":\[{"name":"Material","values":"([^"]+)"}]')
-regallery = re.compile(r'"gallery":"([^"]+)"')
-
-def getdata(url):
-    data = geturl(base + url)
-    r = redata.search(data)
-    ga = regallery.search(data)
-    if ga is not None:
-        ga = ga.group(1)
-    if r:
-        return r.group(1).split(','), ga
-    else:
-        return [], None
-
-
-renumber = re.compile(r'[0123456789]+')
-
-
 class Item:
-    def __init__(self, url, materials, gallery):
+    def __init__(self, url: str, materials: typing.List[str], gallery: typing.Optional[str]):
         self.url = url
         self.materials = materials
         self.gallery = gallery
 
-    def get_material(self, mat):
+    def get_material(self, mat: str) -> typing.Optional[int]:
         for m in self.materials:
             if m.lower().endswith(mat):
                 number = renumber.search(m)
@@ -59,52 +50,175 @@ class Item:
         return None
 
 
-def getalldata(url):
-    for s in getsubsites(url):
-        d, g = getdata(s)
-        yield Item(s, d, g)
+def collect_single_item(base: str, url: str) -> Item:
+    data = geturl(base + url)
+    r = redata.search(data)
+    ga = regallery.search(data)
+    if ga is not None:
+        ga = ga.group(1)
 
-def all_with_material(url, material):
-    for d in getalldata(url):
+    if r:
+        return Item(url, r.group(1).split(','), ga)
+    else:
+        print('Unable to detect data in', url)
+        return Item(url, [], None)
+
+
+
+def collect_items(base: str, items: typing.Iterable[str]) -> typing.Iterable[Item]:
+    for url in items:
+        yield collect_single_item(base, url)
+
+
+class Result:
+    def __init__(self, url: str, value: int, gallery: str, data: Item):
+        self.url = url
+        self.value = value
+        self.gallery = gallery
+        self.item = data
+
+
+def all_with_material(items: typing.Iterable[Item], material: str) -> typing.Iterable[Result]:
+    for d in items:
         value = d.get_material(material)
         if value is not None:
-            yield d.url, value, d.gallery
+            yield Result(d.url, value, d.gallery, d)
 
-def tohtml(sorted, material):
-    print('<html>')
-    print('<head><title>')
-    print(material)
-    print('</title><link rel="stylesheet" type="text/css" href="style.css"></head>')
-    print('<body>')
-    print('<div class="container">')
+
+def tohtml(base: str, sorted: typing.Iterable[Result], material: str, out):
+    print('<html>', file=out)
+    print('<head><title>', file=out)
+    print(material, file=out)
+    print('</title><link rel="stylesheet" type="text/css" href="style.css"></head>', file=out)
+    print('<body>', file=out)
+    print('<div class="container">', file=out)
     last = 0
     for d in sorted:
-        p = d[1]
+        p = d.value
         if last != p:
-            print('<div class="percent">')
-            print(p)
-            print('</div>')
+            print('<div class="percent">', file=out)
+            print(p, file=out)
+            print('</div>', file=out)
             last = p
-        print('<div class="result">')
-        print('<!-- {} -->'.format(p))
-        print('<a href="{}">'.format(base + d[0]))
-        print('<img src="{}">'.format(d[2]))
-        print('</a>')
-        print('</div>')
-    print('</div>')
-    print('</body>')
-    print('</html>')
+        print('<div class="result">', file=out)
+        print('<!-- {} -->'.format(p), file=out)
+        print('<a href="{}">'.format(base + d.url), file=out)
+        print('<img src="{}">'.format(d.gallery), file=out)
+        print('</a>', file=out)
+        print('</div>', file=out)
+    print('</div>', file=out)
+    print('</body>', file=out)
+    print('</html>', file=out)
+
+
+def collect_data(base: str, url: str) -> typing.List[Item]:
+    print('')
+    print('Getting all pages...')
+    pages = list(find_all_pages(base, url))
+    print('{} pages found'.format(len(pages)))
+
+    print('')
+    print('Getting all items...')
+    items = list(collect_items(base, pages))
+    print('{} items found'.format(len(items)))
+
+    return items
+
+
+def selective_print(items: typing.List[Item], material: str, base: str, out):
+    print('')
+    print('Getting all materials....')
+    data = list(all_with_material(items, material))
+    print('{} items selected'.format(len(data)))
+
+    print('')
+    print('Sorting....')
+    data.sort(key=lambda t: t.value, reverse=True)
+
+    print('')
+    print('Printing to html')
+    tohtml(base, data, material, out)
+
+
+class Store:
+    def __init__(self, items: typing.List[Item], base: str):
+        self.items = items
+        self.base = base
+
+
+class JsonEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Store):
+            return {'__store__': True, 'base': obj.base, 'items': obj.items}
+        if isinstance(obj, Item):
+            return {'__item__': True, 'url': obj.url, 'gallery': obj.gallery, 'materials': obj.materials}
+        return json.JSONEncoder.default(self, obj)
+
+
+def store_list(data: Store):
+    with open('store.json', 'w') as f:
+        json.dump(data, f, cls=JsonEncoder, sort_keys=True, indent=4)
+
+
+def as_types(dct):
+    if '__store__' in dct:
+        return Store(dct['items'], dct['base'])
+    if '__item__' in dct:
+        return Item(dct['url'], dct['materials'], dct['gallery'])
+    return dct
+
+
+def load_list() -> Store:
+    with open('store.json', 'r') as f:
+        return json.load(f, object_hook=as_types)
+
+
+def handle_generate(args):
+    base = 'https://www.zalando.se'
+    url = '/man-klader-byxor-shorts/?upper_material=bomull'
+
+    items = collect_data(base, url)
+    store_list(Store(items, base))
+    pass
+
+
+def handle_print(args):
+    store = load_list()
+    material = 'elastan'
+
+    selective_print(store.items, material, store.base, args.out)
+    pass
+
+
+def handle_list(args):
+    store = load_list()
+    for it in store.items:
+        print(it.url)
+        print(it.materials)
+        print()
 
 
 def main():
-    url = '/man-klader-byxor-shorts/?upper_material=bomull'
-    material = 'elastan'
+    parser = argparse.ArgumentParser()
+    parser.set_defaults(func=None)
 
-    data = all_with_material(url, material)
-    sorted = list(data) #list(itertools.islice(data, 5))
-    sorted.sort(key=lambda t: t[1], reverse=True)
+    subs = parser.add_subparsers(help='sub command')
 
-    tohtml(sorted, material)
+    sub = subs.add_parser('generate')
+    sub.set_defaults(func=handle_generate)
+
+    sub = subs.add_parser('list')
+    sub.set_defaults(func=handle_list)
+
+    sub = subs.add_parser('print')
+    sub.add_argument('out', type=argparse.FileType('w'))
+    sub.set_defaults(func=handle_print)
+
+    args = parser.parse_args()
+    if args.func is None:
+        parser.print_help()
+    else:
+        args.func(args)
 
 
 if __name__ == "__main__":
