@@ -117,7 +117,6 @@ class Item:
 
 
 def collect_single_item(base: str, url: str) -> Item:
-    print('Getting single item from ', url)
     data = geturl(base + url)
     r = redata.search(data)
     ga = regallery.search(data)
