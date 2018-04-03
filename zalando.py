@@ -22,6 +22,14 @@ regallery = re.compile(r'"gallery":"([^"]+)"')
 renumber = re.compile(r'[0123456789]+')
 rematerial = re.compile(r'[0123456789]+% ([a-zA-Z]+)')
 
+recdata = re.compile(r'<!\[CDATA\[(.*?)\]\]>')
+
+
+def list_all_cdata(data: str) -> typing.Iterable[typing.Any]:
+    for r in recdata.finditer(data):
+        cd = json.loads(r.group(1))
+        yield cd
+
 
 def clean_json_string(url: str) -> str:
     return url.replace('\\u002F', '/')
@@ -34,9 +42,14 @@ def downloadurl(link: str) -> str:
         return data.decode('utf-8')
 
 
-def geturl(link: str) -> str:
+def cachedir() -> str:
     filedir = os.path.join(os.getcwd(), 'cache')
     os.makedirs(filedir, exist_ok=True)
+    return filedir
+
+
+def geturl(link: str) -> str:
+    filedir = cachedir()
     filename = urllib.parse.quote(link, '')
     path = os.path.join(filedir, filename)
     if os.path.exists(path):
@@ -49,21 +62,18 @@ def geturl(link: str) -> str:
         return data
 
 
+def find_all_pages_in_data(data: str) -> typing.Iterable[str]:
+    for r in resubsite.finditer(data):
+        yield r.group(1)
+    for r in resubsite_alt.finditer(data):
+        yield r.group(1)
+
+
 def find_all_pages(base: str, url: str) -> typing.Iterable[str]:
     print('Getting subsites from', url)
     data = geturl(base + url)
-    count = 0
-    for r in resubsite.finditer(data):
-        count += 1
-        yield r.group(1)
-    for r in resubsite_alt.finditer(data):
-        count += 1
-        yield r.group(1)
-    #  print(data.find('next_page_path'))
-    print(count)
-    if count == -75:
-        with open('url.html', 'w') as f:
-            f.write(data)
+    # print(len(list(list_all_cdata(data))))
+    yield data
     for r in resubsitenext_json.finditer(data):
         next = clean_json_string(r.group(1))
         print('Grabbing more... (json)')
@@ -74,6 +84,12 @@ def find_all_pages(base: str, url: str) -> typing.Iterable[str]:
         print('Grabbing more... (html)')
         for s in find_all_pages(base, next):
             yield s
+
+
+def find_all_cdata(base: str, url: str) -> typing.Iterable[typing.Any]:
+    for data in find_all_pages(base, url):
+        for cdata in list_all_cdata(data):
+            yield cdata
 
 
 class Item:
@@ -151,10 +167,16 @@ def tohtml(base: str, sorted: typing.Iterable[Result], material: str, out):
     print('</html>', file=out)
 
 
+def find_all_pages_now(base: str, url: str) -> typing.Iterable[str]:
+    for data in find_all_pages(base, url):
+        for page in find_all_pages_in_data(data):
+            yield page
+
+
 def collect_data(base: str, url: str) -> typing.List[Item]:
     print('')
     print('Getting all pages...')
-    pages = list(find_all_pages(base, url))
+    pages = list(find_all_pages_now(base, url))
     print('{} pages found'.format(len(pages)))
 
     print('')
@@ -232,9 +254,38 @@ def handle_generate(args):
     store_list(Store(items, base))
 
 
+def first(x):
+    for a in x:
+        return a
+    return None
+
+
+def handle_debug(args):
+    # root: str
+    root = args.url
+    base = 'https://www.zalando.se'
+    url = '/man-klader-byxor-shorts/?upper_material=bomull'
+    print(root)
+
+    if not root.startswith(base):
+        print('Invalid url')
+        return
+
+    url = root[len(base):]
+    if url.endswith('/'):
+        url = url[:len(url)-1]
+
+    data = first(find_all_pages(base, url))
+    index = 0
+    for js in list_all_cdata(data):
+        s = json.dumps(js, sort_keys=True, indent=4, separators=(',', ': '))
+        index = index + 1
+        with open(os.path.join(cachedir(), str(index) + '.json'), 'w') as f:
+            print(s, file=f)
+
+
 def handle_print(args):
     store = load_list()
-
     selective_print(store.items, args.material, store.base, args.out)
     pass
 
@@ -279,6 +330,10 @@ def main():
     sub = subs.add_parser('generate')
     sub.add_argument('url')
     sub.set_defaults(func=handle_generate)
+
+    sub = subs.add_parser('debug')
+    sub.add_argument('url')
+    sub.set_defaults(func=handle_debug)
 
     sub = subs.add_parser('list')
     sub.set_defaults(func=handle_list)
