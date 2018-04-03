@@ -31,6 +31,15 @@ def list_all_cdata(data: str) -> typing.Iterable[typing.Any]:
         yield cd
 
 
+def list_all_article_urls(data: str) -> typing.Iterable[typing.Any]:
+    for c in list_all_cdata(data):
+        if 'articles' in c:
+            articles = c['articles']
+            for art in articles:
+                url = art['url_key']
+                yield '/' + url + '.html'
+
+
 def clean_json_string(url: str) -> str:
     return url.replace('\\u002F', '/')
 
@@ -108,6 +117,7 @@ class Item:
 
 
 def collect_single_item(base: str, url: str) -> Item:
+    print('Getting single item from ', url)
     data = geturl(base + url)
     r = redata.search(data)
     ga = regallery.search(data)
@@ -170,6 +180,8 @@ def tohtml(base: str, sorted: typing.Iterable[Result], material: str, out):
 def find_all_pages_now(base: str, url: str) -> typing.Iterable[str]:
     for data in find_all_pages(base, url):
         for page in find_all_pages_in_data(data):
+            yield page
+        for page in list_all_article_urls(data):
             yield page
 
 
