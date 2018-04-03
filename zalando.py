@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
+import urllib.parse
 import urllib.request
 import re
 import argparse
 import typing
 import json
 import collections
+import os
 
 #  class="catalogArticlesList_imageBox"
 resubsite = re.compile(r'<a class="z-nvg-cognac_imageLink-OPGGa" href="([^"]+)"')
@@ -25,11 +27,26 @@ def clean_json_string(url: str) -> str:
     return url.replace('\\u002F', '/')
 
 
-def geturl(link: str) -> str:
+def downloadurl(link: str) -> str:
     print('Requesting url ', link)
     with urllib.request.urlopen(link) as f:
         data = f.read()
         return data.decode('utf-8')
+
+
+def geturl(link: str) -> str:
+    filedir = os.path.join(os.getcwd(), 'cache')
+    os.makedirs(filedir, exist_ok=True)
+    filename = urllib.parse.quote(link, '')
+    path = os.path.join(filedir, filename)
+    if os.path.exists(path):
+        with open(path, 'rb') as f:
+            return f.read().decode('utf-8')
+    else:
+        data = downloadurl(link)
+        with open(path, 'wb') as f:
+            f.write(data.encode('utf-8'))
+        return data
 
 
 def find_all_pages(base: str, url: str) -> typing.Iterable[str]:
@@ -86,7 +103,6 @@ def collect_single_item(base: str, url: str) -> Item:
     else:
         print('Unable to detect data in', url)
         return Item(url, [], None)
-
 
 
 def collect_items(base: str, items: typing.Iterable[str]) -> typing.Iterable[Item]:
@@ -252,7 +268,6 @@ def handle_list(args):
     counted = collections.Counter(materials)
     for name, count in counted.items():
         print('{}: {}'.format(name, count))
-
 
 
 def main():

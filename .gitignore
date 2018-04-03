@@ -102,5 +102,7 @@ ENV/
 
 .idea/
 
+cache/
+
 *.html
 *.json
