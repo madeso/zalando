@@ -337,8 +337,10 @@ def handle_list(args):
     materials = []
 
     for it in store.items:
-        for mat in get_material_names(it.materials):
-            materials.append(mat)
+        mats = get_material_names(it.materials)
+        if args.m is None or args.m in mats:
+            for mat in mats:
+                materials.append(mat)
 
     counted = collections.Counter(materials)
     for name, count in counted.items():
@@ -360,6 +362,7 @@ def main():
     sub.set_defaults(func=handle_debug)
 
     sub = subs.add_parser('list')
+    sub.add_argument('-m')
     sub.set_defaults(func=handle_list)
 
     sub = subs.add_parser('search')
