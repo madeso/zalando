@@ -198,10 +198,23 @@ def collect_data(base: str, url: str) -> typing.List[Item]:
     return items
 
 
+def all_items_with_materials(all, mats):
+    for a in all:
+        include = True
+        for m in mats:
+            found = a.item.get_material(m)
+            if found is None:
+                include = False
+        if include:
+            yield a
+
+
 def selective_print(items: typing.List[Item], material: str, base: str, out):
     print('')
     print('Getting all materials....')
-    data = list(all_with_material(items, material))
+    mats = material.split(',')
+    all = all_with_material(items, mats[0])
+    data = list(all_items_with_materials(all, mats))
     print('{} items selected'.format(len(data)))
 
     print('')
