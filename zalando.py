@@ -46,9 +46,15 @@ def clean_json_string(url: str) -> str:
 
 def downloadurl(link: str) -> str:
     print('Requesting url ', link)
-    with urllib.request.urlopen(link) as f:
-        data = f.read()
-        return data.decode('utf-8')
+    try:
+        with urllib.request.urlopen(link) as f:
+            data = f.read()
+            return data.decode('utf-8')
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return ''
+        else:
+            raise e
 
 
 def cachedir() -> str:
