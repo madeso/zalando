@@ -49,35 +49,6 @@ def get_url_or_cache(link: str, status: str) -> str:
         return data
 
 
-class Store:
-    def __init__(self, url: str, items: typing.List[str]):
-        self.items = items
-        self.url = url
-
-
-class JsonEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, Store):
-            return {'__store__': True, 'url': obj.url, 'items': obj.items}
-        return json.JSONEncoder.default(self, obj)
-
-
-def as_types(dct):
-    if '__store__' in dct:
-        return Store(dct['items'], dct['url'])
-    return dct
-
-
-def save_store(data: Store):
-    with open('store.json', 'w') as file_handle:
-        json.dump(data, file_handle, cls=JsonEncoder, sort_keys=True, indent=4)
-
-
-def load_store() -> Store:
-    with open('store.json', 'r') as file_handle:
-        return json.load(file_handle, object_hook=as_types)
-
-
 def list_all_cdata(data: str) -> typing.Iterable[typing.Any]:
     """list all cdata strings in a soup string
     it should probably be a single get but this works for now"""
@@ -122,6 +93,38 @@ class ArticleInfo:
     def __init__(self, material: typing.Dict[str, str], tyg: str):
         self.material = material
         self.tyg = tyg
+
+
+class Store:
+    def __init__(self, articles: typing.List[Article]):
+        self.articles = articles
+
+
+class JsonEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Store):
+            return {'__store__': True, 'articles': obj.articles}
+        if isinstance(obj, Article):
+            return {'__article__': True, 'brand': obj.brand, 'name': obj.name, 'key': obj.key, 'media': obj.media}
+        return json.JSONEncoder.default(self, obj)
+
+
+def as_types(dct):
+    if '__store__' in dct:
+        return Store(dct['articles'])
+    if '__article__' in dct:
+        return Store(dct['brand'], dct['name'], dct['key'], dct['media'])
+    return dct
+
+
+def save_store(data: Store):
+    with open('store.json', 'w') as file_handle:
+        json.dump(data, file_handle, cls=JsonEncoder, sort_keys=True, indent=4)
+
+
+def load_store() -> Store:
+    with open('store.json', 'r') as file_handle:
+        return json.load(file_handle, object_hook=as_types)
 
 
 def article_from_article_soup(art, base_url: str, debug: bool) -> Article:
@@ -181,6 +184,11 @@ def get_article_info(url: str) -> ArticleInfo:
     return ArticleInfo(material, tyg)
 
 
+def handle_generate(args):
+    articles = list_articles(args.url, False)
+    save_store(Store(articles))
+
+
 def handle_list_articles(args):
     articles = list_articles(args.url, args.debug)
     if args.print:
@@ -211,6 +219,10 @@ def main():
     parser.set_defaults(func=None)
 
     subs = parser.add_subparsers(help='sub command')
+
+    sub = subs.add_parser('generate')
+    sub.add_argument('url')
+    sub.set_defaults(func=handle_generate)
 
     sub = subs.add_parser('debug')
     sub.add_argument('url')
