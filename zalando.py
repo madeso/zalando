@@ -81,18 +81,19 @@ def debug_dump_map(jsons):
         write_json_dump(key, jsons[key])
 
 
-class Article:
-    def __init__(self, brand: str, name: str, url: str, media: str):
-        self.brand = brand
-        self.name = name
-        self.url = url
-        self.media = media
-
-
 class ArticleInfo:
     def __init__(self, material: typing.Dict[str, str], tyg: str):
         self.material = material
         self.tyg = tyg
+
+
+class Article:
+    def __init__(self, brand: str, name: str, url: str, media: str, info: typing.Optional[ArticleInfo]):
+        self.brand = brand
+        self.name = name
+        self.url = url
+        self.media = media
+        self.info = info
 
 
 class Store:
@@ -105,7 +106,9 @@ class JsonEncoder(json.JSONEncoder):
         if isinstance(obj, Store):
             return {'__store__': True, 'articles': obj.articles}
         if isinstance(obj, Article):
-            return {'__article__': True, 'brand': obj.brand, 'name': obj.name, 'url': obj.url, 'media': obj.media}
+            return {'__article__': True, 'brand': obj.brand, 'name': obj.name, 'url': obj.url, 'media': obj.media, 'info': obj.info}
+        if isinstance(obj, ArticleInfo):
+            return {'__articleinfo__': True, 'material': obj.material, 'tyg': obj.tyg}
         return json.JSONEncoder.default(self, obj)
 
 
@@ -113,7 +116,9 @@ def as_types(dct):
     if '__store__' in dct:
         return Store(dct['articles'])
     if '__article__' in dct:
-        return Article(dct['brand'], dct['name'], dct['url'], dct['media'])
+        return Article(dct['brand'], dct['name'], dct['url'], dct['media'], dct['info'])
+    if '__articleinfo__' in dct:
+        return ArticleInfo(dct['material'], dct['tyg'])
     return dct
 
 
@@ -127,7 +132,7 @@ def load_store() -> Store:
         return json.load(file_handle, object_hook=as_types)
 
 
-def article_from_article_soup(art, base_url: str, debug: bool) -> Article:
+def article_from_article_soup(art, base_url: str, debug: bool, collect: bool) -> Article:
     brand_name = art['brand_name']
     name = art['name']
     url_key = art['url_key']
@@ -137,13 +142,18 @@ def article_from_article_soup(art, base_url: str, debug: bool) -> Article:
     url = urllib.parse.urljoin(base_url, url_key + '.html')
     media_url = urllib.parse.urljoin('https://img01.ztat.net/article/', media_path)
 
+    info = None
+    if collect:
+        print('Getting article info ', brand_name, name)
+        info = get_article_info(url, url, False)
+
     if debug:
         write_json_dump('art', art)
 
-    return Article(brand_name, name, url, media_url)
+    return Article(brand_name, name, url, media_url, info)
 
 
-def list_articles(url: str, debug: bool) -> typing.List[Article]:
+def list_articles(url: str, debug: bool, collect: bool) -> typing.List[Article]:
     html_doc = get_url_or_cache(url, '')
     soup = BeautifulSoup(html_doc, 'html.parser')
     url_data = urllib.parse.urlparse(url)
@@ -156,7 +166,7 @@ def list_articles(url: str, debug: bool) -> typing.List[Article]:
     if debug:
         articles_orig = articles
         articles = [first(articles_orig)]
-    return [article_from_article_soup(art, base_url, debug) for art in articles]
+    return [article_from_article_soup(art, base_url, debug, collect) for art in articles]
 
 
 def parse_material_string(material_string: str):
@@ -164,6 +174,7 @@ def parse_material_string(material_string: str):
     data = material_string.split(' ', 2)
     data.reverse()
     return data
+
 
 def split_material_string(material_string: str):
     """takes a string of '10% dog, 20% cat' and returns a dict {'dog': '10%', 'cat': '20%'}"""
@@ -192,12 +203,12 @@ def get_article_info(url: str, name: str, debug: bool) -> ArticleInfo:
 
 
 def handle_generate(args):
-    articles = list_articles(args.url, False)
+    articles = list_articles(args.url, False, args.collect)
     save_store(Store(articles))
 
 
 def handle_list_articles(args):
-    articles = list_articles(args.url, args.debug)
+    articles = list_articles(args.url, args.debug, False)
     if args.print:
         for art in articles:
             print(art.brand)
@@ -223,9 +234,21 @@ def print_counter(counter, _):
 def handle_list_materials_from_store(args):
     articles = load_store().articles
     counter = collections.Counter()
+
     for article in articles:
         info = get_article_info(article.url, article.url, False)
         counter.update(mat for mat in info.material)
+    
+    print_counter(counter, args)
+
+
+def handle_list_tygs_from_store(args):
+    articles = load_store().articles
+    counter = collections.Counter()
+
+    for article in articles:
+        info = get_article_info(article.url, article.url, False)
+        counter.update([info.tyg])
     
     print_counter(counter, args)
 
@@ -245,6 +268,7 @@ def main():
 
     sub = subs.add_parser('generate')
     sub.add_argument('url')
+    sub.add_argument('--collect', action='store_true')
     sub.set_defaults(func=handle_generate)
 
     sub = subs.add_parser('debug')
@@ -264,6 +288,9 @@ def main():
 
     sub = subs.add_parser('list-materials')
     sub.set_defaults(func=handle_list_materials_from_store)
+    
+    sub = subs.add_parser('list-tygs')
+    sub.set_defaults(func=handle_list_tygs_from_store)
 
     args = parser.parse_args()
     if args.func is None:
