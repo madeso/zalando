@@ -271,6 +271,20 @@ def handle_list_tygs_from_store(args):
     print_counter(counter, args)
 
 
+def filter_articles(articles: typing.List[Article], tyg: typing.Optional[str], material: typing.Optional[str]) -> typing.Iterable[Article]:
+    articles_with_info = (article for article in articles if article.info is not None)
+    articles_with_tyg = (article for article in articles_with_info if article.info.tyg.lower() == tyg.lower()) if tyg is not None else articles_with_info
+    articles_with_material = (article for article in articles_with_tyg if material in article.info.material) if material is not None else articles_with_tyg
+    return articles_with_material
+
+
+def handle_write(args):
+    articles = filter_articles(load_store().articles, tyg=args.tyg, material=args.material)
+
+    for article in articles:
+        print(article.brand, article.name)
+
+
 def handle_debug(args):
     url = args.url
     html_doc = get_url_or_cache(url, '')
@@ -309,6 +323,11 @@ def main():
 
     sub = subs.add_parser('list-tygs')
     sub.set_defaults(func=handle_list_tygs_from_store)
+
+    sub = subs.add_parser('write')
+    sub.add_argument('--tyg')
+    sub.add_argument('--material')
+    sub.set_defaults(func=handle_write)
 
     sub = subs.add_parser('collect')
     sub.add_argument('--force', action='store_true')
