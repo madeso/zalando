@@ -279,6 +279,31 @@ def filter_articles(articles: typing.List[Article], tyg: typing.Optional[str], m
     return articles_with_material
 
 
+class ArticleGroup:
+    def __init__(self, value: str, articles: typing.List[Article]):
+        self.value = value
+        self.articles = articles
+
+
+def int_parse(text: str):
+    stripped = text.strip()
+    if stripped.endswith('%'):
+        stripped = stripped[:len(stripped)-1].strip()
+    return int(stripped)
+
+
+def group_articles(articles: typing.Iterable[Article], material: typing.Optional[str]) -> typing.Iterable[ArticleGroup]:
+    if material is None:
+        yield ArticleGroup('', list(articles))
+
+    articles_list = list(articles)
+    articles_list.sort(key=lambda article: int_parse(article.info.material[material]))
+    articles_list.reverse()
+
+    for key, group in itertools.groupby(articles_list, lambda article: article.info.material[material]):
+        yield ArticleGroup(key, list(group))
+
+
 def print_article_as_html_card(article: Article):
     print('<div class="card">')
     print('    <img src="{}" class="card-img-top">'.format(article.media))
@@ -328,13 +353,16 @@ def handle_write_html(args):
 
 def handle_write(args):
     articles = filter_articles(load_store().articles, tyg=args.tyg, material=args.material)
-    pages = paginate(list(articles), 3)
+    grouped_articles = group_articles(articles, args.material)
 
-    for page in pages:
-        for article in page:
-            if article is not None:
-                print(article.brand, article.name)
-        print()
+    for group in grouped_articles:
+        print(group.value)
+        pages = paginate(list(group.articles), 3)
+        for page in pages:
+            for article in page:
+                if article is not None:
+                    print(' ', article.brand, article.name)
+            print()
 
 
 def handle_debug(args):
