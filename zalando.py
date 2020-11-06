@@ -3,6 +3,7 @@
 import urllib.parse
 import urllib.request
 import argparse
+import itertools
 import typing
 import json
 import collections
@@ -278,11 +279,51 @@ def filter_articles(articles: typing.List[Article], tyg: typing.Optional[str], m
     return articles_with_material
 
 
+def print_article_as_html_card(article: Article):
+    print('<div class="card">')
+    print('    <img src="{}" class="card-img-top">'.format(article.media))
+    print('    <div class="card-body">')
+    print('        <h5 class="card-title">{}</h5>'.format(article.brand))
+    print('        <p class="card-text">{}</p>'.format(article.name))
+    print('        <a href="{}" class="btn btn-primary">Go</a>'.format(article.url))
+    print('    </div>')
+    print('</div>')
+
+
+def pad(mylist, count):
+    return [item for item, _ in itertools.zip_longest(mylist, range(count))]
+
+def paginate(mylist, count):
+    return [pad(mylist[i:i+count], count) for i in range(0, len(mylist), count)]
+
+
 def handle_write(args):
     articles = filter_articles(load_store().articles, tyg=args.tyg, material=args.material)
+    pages = paginate(list(articles), 3)
 
-    for article in articles:
-        print(article.brand, article.name)
+    print('<!doctype html>')
+    print('<html lang="en">')
+    print('<head>')
+    print('    <meta charset="utf-8">')
+    print('    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">')
+    print('    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/css/bootstrap.min.css" integrity="sha384-TX8t27EcRE3e/ihU7zmQxVncDAy5uIKz4rEkgIXeMed4M0jlfIDPvg6uqKI2xXr2" crossorigin="anonymous">')
+    print('    <title>Hello, world!</title>')
+    print('</head>')
+    print('<body>')
+    print('    <div class="container">')
+    for page in pages:
+        print('        <div class="row">')
+        for article in page:
+            print('            <div class="col-sm">')
+            if article is not None:
+                print_article_as_html_card(article)
+            print('            </div>')
+        print('        </div>')
+    print('    </div>')
+    print('    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js" integrity="sha384-DfXdz2htPH0lsSSs5nCTpuj/zy4C+OGpamoFVy38MVBnE+IbbVYUew+OrCXaRkfj" crossorigin="anonymous"></script>')
+    print('    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ho+j7jyWK8fNQe+A12Hb8AhRq26LrZ/JpcUGGOn+Y7RsweNrtN/tE3MoK7ZeZDyx" crossorigin="anonymous"></script>')
+    print('</body>')
+    print('</html>')
 
 
 def handle_debug(args):
