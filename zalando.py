@@ -31,9 +31,12 @@ def download_url(link: str, status: str) -> str:
 
 
 def download_file(link: str, target: str):
+    folder = os.path.dirname(target)
+    os.makedirs(folder, exist_ok=True)
     if os.path.exists(target):
         return
     print('Downloading image', link)
+    print('to', target)
     try:
         with urllib.request.urlopen(link) as url_handle:
             data = url_handle.read()
@@ -59,10 +62,12 @@ def local_filename(link: str) -> str:
     return path
 
 
-def link_path(link: str) -> str:
-    # filedir = get_cachedir()
-    filename = urllib.parse.quote(link, '')
-    path = os.path.join('cache', filename)
+def local_image(link: str, arg_folder = None) -> str:
+    folder = arg_folder
+    if folder is None:
+        folder = get_cachedir()
+    parsed = urllib.parse.urlparse(link)
+    path = os.path.join(folder, 'images' + parsed.path)
     return path
 
 
@@ -285,10 +290,10 @@ def handle_make_images_local(_):
 
     for article in articles:
         if article.media.startswith('http'):
-            new_url = local_filename(article.media)
+            new_url = local_image(article.media)
             download_file(article.media, new_url)
             write = True
-            article.media = link_path(article.media)
+            article.media = local_image(article.media, 'cache')
 
     if write:
         print('change detected, writing info')
