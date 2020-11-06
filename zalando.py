@@ -297,7 +297,7 @@ def paginate(mylist, count):
     return [pad(mylist[i:i+count], count) for i in range(0, len(mylist), count)]
 
 
-def handle_write(args):
+def handle_write_html(args):
     articles = filter_articles(load_store().articles, tyg=args.tyg, material=args.material)
     pages = paginate(list(articles), 3)
 
@@ -324,6 +324,17 @@ def handle_write(args):
     print('    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ho+j7jyWK8fNQe+A12Hb8AhRq26LrZ/JpcUGGOn+Y7RsweNrtN/tE3MoK7ZeZDyx" crossorigin="anonymous"></script>')
     print('</body>')
     print('</html>')
+
+
+def handle_write(args):
+    articles = filter_articles(load_store().articles, tyg=args.tyg, material=args.material)
+    pages = paginate(list(articles), 3)
+
+    for page in pages:
+        for article in page:
+            if article is not None:
+                print(article.brand, article.name)
+        print()
 
 
 def handle_debug(args):
@@ -369,6 +380,11 @@ def main():
     sub.add_argument('--tyg')
     sub.add_argument('--material')
     sub.set_defaults(func=handle_write)
+
+    sub = subs.add_parser('html')
+    sub.add_argument('--tyg')
+    sub.add_argument('--material')
+    sub.set_defaults(func=handle_write_html)
 
     sub = subs.add_parser('collect')
     sub.add_argument('--force', action='store_true')
