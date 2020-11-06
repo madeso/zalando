@@ -30,16 +30,44 @@ def download_url(link: str, status: str) -> str:
             raise http_error
 
 
+def download_file(link: str, target: str):
+    if os.path.exists(target):
+        return
+    print('Downloading image', link)
+    try:
+        with urllib.request.urlopen(link) as url_handle:
+            data = url_handle.read()
+            with open(target, 'wb') as output:
+                output.write(data)
+    except urllib.error.HTTPError as http_error:
+        if http_error.code == 404:
+            print('404 error when downloading', link)
+        else:
+            raise http_error
+
+
 def get_cachedir() -> str:
     filedir = os.path.join(os.getcwd(), 'cache')
     os.makedirs(filedir, exist_ok=True)
     return filedir
 
 
-def get_url_or_cache(link: str, status: str) -> str:
+def local_filename(link: str) -> str:
     filedir = get_cachedir()
     filename = urllib.parse.quote(link, '')
     path = os.path.join(filedir, filename)
+    return path
+
+
+def link_path(link: str) -> str:
+    # filedir = get_cachedir()
+    filename = urllib.parse.quote(link, '')
+    path = os.path.join('cache', filename)
+    return path
+
+
+def get_url_or_cache(link: str, status: str) -> str:
+    path = local_filename(link)
     if os.path.exists(path):
         with open(path, 'rb') as file_handle:
             return file_handle.read().decode('utf-8')
@@ -250,6 +278,23 @@ def handle_collect(args):
         save_store(Store(articles))
 
 
+def handle_make_images_local(_):
+    articles = load_store().articles
+
+    write = False
+
+    for article in articles:
+        if article.media.startswith('http'):
+            new_url = local_filename(article.media)
+            download_file(article.media, new_url)
+            write = True
+            article.media = link_path(article.media)
+
+    if write:
+        print('change detected, writing info')
+        save_store(Store(articles))
+
+
 def handle_list_materials_from_store(args):
     articles = load_store().articles
     counter = collections.Counter()
@@ -420,6 +465,10 @@ def main():
     sub = subs.add_parser('collect')
     sub.add_argument('--force', action='store_true')
     sub.set_defaults(func=handle_collect)
+
+    sub = subs.add_parser('local-image')
+    sub.add_argument('--force', action='store_true')
+    sub.set_defaults(func=handle_make_images_local)
 
     args = parser.parse_args()
     if args.func is None:
