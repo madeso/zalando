@@ -5,7 +5,13 @@ import urllib.request
 import argparse
 import typing
 import json
+import collections
+import re
 import os
+from bs4 import BeautifulSoup
+
+
+re_cdata = re.compile(r'<!\[CDATA\[(.*?)\]\]>')
 
 
 def download_url(link: str, status: str) -> str:
@@ -72,28 +78,81 @@ def load_store() -> Store:
         return json.load(file_handle, object_hook=as_types)
 
 
-def handle_generate(args):
-    # root: str
-    root = args.url
-    base = 'https://www.zalando.se'
-    url = '/man-klader-byxor-shorts/?upper_material=bomull'
-    print(root)
+def list_all_cdata(data: str) -> typing.Iterable[typing.Any]:
+    for cdata_match in re_cdata.finditer(data):
+        cdata = json.loads(cdata_match.group(1))
+        yield cdata
 
-    if not root.startswith(base):
-        print('Invalid url')
-        return
 
-    url = root[len(base):]
-    if url.endswith('/'):
-        url = url[:len(url)-1]
+def first(list_or_iterable):
+    for item in list_or_iterable:
+        return item
+    return None
 
-    items = collect_data(base, url)
-    save_store(Store(url, items))
+
+def map_json_in_soup(soup):
+    script_elements = [t for t in soup.find_all('script') if t.has_attr('type') and t['type'] == 'application/json']
+    json_map = {a['id']: first(list_all_cdata(str(a.string))) for a in script_elements}
+    return json_map
+
+
+def debug_dump_map(jsons):
+    for key in jsons:
+        with open('dump-' + key + '.json', 'w') as file_handle:
+            json.dump(jsons[key], file_handle, sort_keys=True, indent=4)
+
+
+class Article:
+    def __init__(self, brand: str, name: str, key: str, media: str):
+        self.brand = brand
+        self.name = name
+        self.key = key
+        self.media = media
+
+
+def list_articles(url: str) -> typing.List[Article]:
+    html_doc = get_url_or_cache(url, '')
+    soup = BeautifulSoup(html_doc, 'html.parser')
+    # print(soup.prettify())
+    # <script id="z-nvg-cognac-props" type="application/json">
+    jsons = map_json_in_soup(soup)
+    props = jsons['z-nvg-cognac-props']
+    articles = props['articles']
+    return [Article(art['brand_name'], art['name'], art['url_key'], first(art['media'])['path']) for art in articles]
+
+
+def handle_list_articles(args):
+    articles = list_articles(args.url)
+    if args.print:
+        for art in articles:
+            print(art.brand)
+            print(art.name)
+            print(art.key)
+            print(art.media)
+            print()
+    print('Articles found:', len(articles))
 
 
 def handle_debug(args):
     url = args.url
-    print(url)
+    html_doc = get_url_or_cache(url, '')
+    soup = BeautifulSoup(html_doc, 'html.parser')
+    # print(soup.prettify())
+    # <script id="z-nvg-cognac-props" type="application/json">
+    jsons = map_json_in_soup(soup)
+    props = jsons['z-nvg-cognac-props']
+    articles = props['articles']
+    for art in articles:
+        media = first(art['media'])
+        print(art['brand_name'])
+        print(art['name'])
+        print(art['url_key'])
+        print(media['path'])
+        print()
+        print()
+    print(len(articles))
+    print()
+    debug_dump_map(jsons)
 
 
 def main():
@@ -102,13 +161,14 @@ def main():
 
     subs = parser.add_subparsers(help='sub command')
 
-    sub = subs.add_parser('generate')
-    sub.add_argument('url')
-    sub.set_defaults(func=handle_generate)
-
     sub = subs.add_parser('debug')
     sub.add_argument('url')
     sub.set_defaults(func=handle_debug)
+
+    sub = subs.add_parser('list-articles')
+    sub.add_argument('url')
+    sub.add_argument('--print', action='store_true')
+    sub.set_defaults(func=handle_list_articles)
 
     args = parser.parse_args()
     if args.func is None:
