@@ -82,10 +82,10 @@ def debug_dump_map(jsons):
 
 
 class Article:
-    def __init__(self, brand: str, name: str, key: str, media: str):
+    def __init__(self, brand: str, name: str, url: str, media: str):
         self.brand = brand
         self.name = name
-        self.key = key
+        self.url = url
         self.media = media
 
 
@@ -105,7 +105,7 @@ class JsonEncoder(json.JSONEncoder):
         if isinstance(obj, Store):
             return {'__store__': True, 'articles': obj.articles}
         if isinstance(obj, Article):
-            return {'__article__': True, 'brand': obj.brand, 'name': obj.name, 'key': obj.key, 'media': obj.media}
+            return {'__article__': True, 'brand': obj.brand, 'name': obj.name, 'url': obj.url, 'media': obj.media}
         return json.JSONEncoder.default(self, obj)
 
 
@@ -113,7 +113,7 @@ def as_types(dct):
     if '__store__' in dct:
         return Store(dct['articles'])
     if '__article__' in dct:
-        return Store(dct['brand'], dct['name'], dct['key'], dct['media'])
+        return Article(dct['brand'], dct['name'], dct['url'], dct['media'])
     return dct
 
 
@@ -171,7 +171,7 @@ def split_material_string(material_string: str):
     return material_list
 
 
-def get_article_info(url: str) -> ArticleInfo:
+def get_article_info(url: str, name: str, debug: bool) -> ArticleInfo:
     html_doc = get_url_or_cache(url, '')
     soup = BeautifulSoup(html_doc, 'html.parser')
     jsons = map_json_in_soup(soup)
@@ -180,7 +180,14 @@ def get_article_info(url: str) -> ArticleInfo:
     material_data = first((p['data'] for p in attributes if p['category'] == 'heading_material'))
     material_map = {d['name']: d['values'] for d in material_data}
     material = split_material_string(material_map['Material'])
-    tyg = material_map['Tyg']
+    tyg = material_map.get('Tyg')
+    if tyg is None:
+        print('missing tyg for ', name)
+        tyg = ''
+        if debug:
+            print('material map:')
+            print(material_map)
+            print()
     return ArticleInfo(material, tyg)
 
 
@@ -195,16 +202,32 @@ def handle_list_articles(args):
         for art in articles:
             print(art.brand)
             print(art.name)
-            print(art.key)
+            print(art.url)
             print(art.media)
             print()
     print('Articles found:', len(articles))
 
 
 def handle_print_article_info(args):
-    info = get_article_info(args.url)
+    info = get_article_info(args.url, '', args.debug)
     print('Material:', info.material)
     print('Tyg:', info.tyg)
+
+
+def print_counter(counter, _):
+    for c in counter:
+        print(c, counter[c])
+    print()
+
+
+def handle_list_materials_from_store(args):
+    articles = load_store().articles
+    counter = collections.Counter()
+    for article in articles:
+        info = get_article_info(article.url, article.url, False)
+        counter.update(mat for mat in info.material)
+    
+    print_counter(counter, args)
 
 
 def handle_debug(args):
@@ -236,7 +259,11 @@ def main():
 
     sub = subs.add_parser('print-article-info')
     sub.add_argument('url')
+    sub.add_argument('--debug', action='store_true')
     sub.set_defaults(func=handle_print_article_info)
+
+    sub = subs.add_parser('list-materials')
+    sub.set_defaults(func=handle_list_materials_from_store)
 
     args = parser.parse_args()
     if args.func is None:
