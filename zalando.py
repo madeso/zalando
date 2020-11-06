@@ -231,14 +231,32 @@ def print_counter(counter, _):
     print()
 
 
+def handle_collect(args):
+    articles = load_store().articles
+    force = args.force
+
+    write = False
+
+    for article in articles:
+        if force or article.info is None:
+            print('Getting info from', article.url)
+            info = get_article_info(article.url, article.url, False)
+            write = True
+            article.info = info
+
+    if write:
+        print('change detected, writing info')
+        save_store(Store(articles))
+
+
 def handle_list_materials_from_store(args):
     articles = load_store().articles
     counter = collections.Counter()
 
     for article in articles:
-        info = get_article_info(article.url, article.url, False)
-        counter.update(mat for mat in info.material)
-    
+        if article.info is not None:
+            counter.update(mat for mat in article.info.material)
+
     print_counter(counter, args)
 
 
@@ -247,9 +265,9 @@ def handle_list_tygs_from_store(args):
     counter = collections.Counter()
 
     for article in articles:
-        info = get_article_info(article.url, article.url, False)
-        counter.update([info.tyg])
-    
+        if article.info is not None:
+            counter.update([article.info.tyg])
+
     print_counter(counter, args)
 
 
@@ -288,9 +306,13 @@ def main():
 
     sub = subs.add_parser('list-materials')
     sub.set_defaults(func=handle_list_materials_from_store)
-    
+
     sub = subs.add_parser('list-tygs')
     sub.set_defaults(func=handle_list_tygs_from_store)
+
+    sub = subs.add_parser('collect')
+    sub.add_argument('--force', action='store_true')
+    sub.set_defaults(func=handle_collect)
 
     args = parser.parse_args()
     if args.func is None:
