@@ -79,6 +79,8 @@ def load_store() -> Store:
 
 
 def list_all_cdata(data: str) -> typing.Iterable[typing.Any]:
+    """list all cdata strings in a soup string
+    it should probably be a single get but this works for now"""
     for cdata_match in re_cdata.finditer(data):
         cdata = json.loads(cdata_match.group(1))
         yield cdata
@@ -91,12 +93,14 @@ def first(list_or_iterable):
 
 
 def map_json_in_soup(soup):
-    script_elements = [t for t in soup.find_all('script') if t.has_attr('type') and t['type'] == 'application/json']
+    """return a map of id  to json for all json scripts in soup"""
+    script_elements = [t for t in soup.find_all('script') if t.has_attr('type') and t.has_attr('id') and t['type'] == 'application/json']
     json_map = {a['id']: first(list_all_cdata(str(a.string))) for a in script_elements}
     return json_map
 
 
 def debug_dump_map(jsons):
+    """write all json maps to dump- files in root"""
     for key in jsons:
         with open('dump-' + key + '.json', 'w') as file_handle:
             json.dump(jsons[key], file_handle, sort_keys=True, indent=4)
@@ -110,6 +114,12 @@ class Article:
         self.media = media
 
 
+class ArticleInfo:
+    def __init__(self, material: typing.Dict[str, str], tyg: str):
+        self.material = material
+        self.tyg = tyg
+
+
 def list_articles(url: str) -> typing.List[Article]:
     html_doc = get_url_or_cache(url, '')
     soup = BeautifulSoup(html_doc, 'html.parser')
@@ -119,6 +129,31 @@ def list_articles(url: str) -> typing.List[Article]:
     props = jsons['z-nvg-cognac-props']
     articles = props['articles']
     return [Article(art['brand_name'], art['name'], art['url_key'], first(art['media'])['path']) for art in articles]
+
+
+def parse_material_string(material_string: str):
+    """takes a string of '25% data' and returns ('data', '25%')"""
+    data = material_string.split(' ', 2)
+    data.reverse()
+    return data
+
+def split_material_string(material_string: str):
+    """takes a string of '10% dog, 20% cat' and returns a dict {'dog': '10%', 'cat': '20%'}"""
+    material_list = dict(parse_material_string(m.strip()) for m in material_string.split(','))
+    return material_list
+
+
+def get_article_info(url: str) -> ArticleInfo:
+    html_doc = get_url_or_cache(url, '')
+    soup = BeautifulSoup(html_doc, 'html.parser')
+    jsons = map_json_in_soup(soup)
+    props = jsons['z-vegas-pdp-props']
+    attributes = props['model']['articleInfo']['attributes']
+    material_data = first((p['data'] for p in attributes if p['category'] == 'heading_material'))
+    material_map = {d['name']: d['values'] for d in material_data}
+    material = split_material_string(material_map['Material'])
+    tyg = material_map['Tyg']
+    return ArticleInfo(material, tyg)
 
 
 def handle_list_articles(args):
@@ -133,26 +168,17 @@ def handle_list_articles(args):
     print('Articles found:', len(articles))
 
 
+def handle_print_article_info(args):
+    info = get_article_info(args.url)
+    print('Material:', info.material)
+    print('Tyg:', info.tyg)
+
+
 def handle_debug(args):
     url = args.url
     html_doc = get_url_or_cache(url, '')
     soup = BeautifulSoup(html_doc, 'html.parser')
-    # print(soup.prettify())
-    # <script id="z-nvg-cognac-props" type="application/json">
-    jsons = map_json_in_soup(soup)
-    props = jsons['z-nvg-cognac-props']
-    articles = props['articles']
-    for art in articles:
-        media = first(art['media'])
-        print(art['brand_name'])
-        print(art['name'])
-        print(art['url_key'])
-        print(media['path'])
-        print()
-        print()
-    print(len(articles))
-    print()
-    debug_dump_map(jsons)
+    print(soup.prettify())
 
 
 def main():
@@ -169,6 +195,10 @@ def main():
     sub.add_argument('url')
     sub.add_argument('--print', action='store_true')
     sub.set_defaults(func=handle_list_articles)
+
+    sub = subs.add_parser('print-article-info')
+    sub.add_argument('url')
+    sub.set_defaults(func=handle_print_article_info)
 
     args = parser.parse_args()
     if args.func is None:
