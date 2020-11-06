@@ -99,11 +99,15 @@ def map_json_in_soup(soup):
     return json_map
 
 
+def write_json_dump(key, jsons):
+    with open('dump-' + key + '.json', 'w') as file_handle:
+        json.dump(jsons, file_handle, sort_keys=True, indent=4)
+
+
 def debug_dump_map(jsons):
     """write all json maps to dump- files in root"""
     for key in jsons:
-        with open('dump-' + key + '.json', 'w') as file_handle:
-            json.dump(jsons[key], file_handle, sort_keys=True, indent=4)
+        write_json_dump(key, jsons[key])
 
 
 class Article:
@@ -120,15 +124,36 @@ class ArticleInfo:
         self.tyg = tyg
 
 
-def list_articles(url: str) -> typing.List[Article]:
+def article_from_article_soup(art, base_url: str, debug: bool) -> Article:
+    brand_name = art['brand_name']
+    name = art['name']
+    url_key = art['url_key']
+    media = first(art['media'])
+    media_path = media['path']
+
+    url = urllib.parse.urljoin(base_url, url_key + '.html')
+    media_url = urllib.parse.urljoin('https://img01.ztat.net/article/', media_path)
+
+    if debug:
+        write_json_dump('art', art)
+
+    return Article(brand_name, name, url, media_url)
+
+
+def list_articles(url: str, debug: bool) -> typing.List[Article]:
     html_doc = get_url_or_cache(url, '')
     soup = BeautifulSoup(html_doc, 'html.parser')
-    # print(soup.prettify())
-    # <script id="z-nvg-cognac-props" type="application/json">
+    url_data = urllib.parse.urlparse(url)
+    base_url = urllib.parse.urlunparse((url_data.scheme, url_data.netloc, '', '', '', ''))
+    if debug:
+        print('base_url', base_url)
     jsons = map_json_in_soup(soup)
     props = jsons['z-nvg-cognac-props']
     articles = props['articles']
-    return [Article(art['brand_name'], art['name'], art['url_key'], first(art['media'])['path']) for art in articles]
+    if debug:
+        articles_orig = articles
+        articles = [first(articles_orig)]
+    return [article_from_article_soup(art, base_url, debug) for art in articles]
 
 
 def parse_material_string(material_string: str):
@@ -157,7 +182,7 @@ def get_article_info(url: str) -> ArticleInfo:
 
 
 def handle_list_articles(args):
-    articles = list_articles(args.url)
+    articles = list_articles(args.url, args.debug)
     if args.print:
         for art in articles:
             print(art.brand)
@@ -194,6 +219,7 @@ def main():
     sub = subs.add_parser('list-articles')
     sub.add_argument('url')
     sub.add_argument('--print', action='store_true')
+    sub.add_argument('--debug', action='store_true')
     sub.set_defaults(func=handle_list_articles)
 
     sub = subs.add_parser('print-article-info')
