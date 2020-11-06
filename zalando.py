@@ -44,8 +44,9 @@ def clean_json_string(url: str) -> str:
     return url.replace('\\u002F', '/')
 
 
-def downloadurl(link: str) -> str:
-    print('Requesting url ', link)
+def downloadurl(link: str, status: str) -> str:
+    status_text = '' if len(status)==0 else '({})'.format(status)
+    print('Requesting url{}: {}'.format(status_text, link))
     try:
         with urllib.request.urlopen(link) as f:
             data = f.read()
@@ -63,7 +64,7 @@ def cachedir() -> str:
     return filedir
 
 
-def geturl(link: str) -> str:
+def geturl(link: str, status: str) -> str:
     filedir = cachedir()
     filename = urllib.parse.quote(link, '')
     path = os.path.join(filedir, filename)
@@ -71,7 +72,7 @@ def geturl(link: str) -> str:
         with open(path, 'rb') as f:
             return f.read().decode('utf-8')
     else:
-        data = downloadurl(link)
+        data = downloadurl(link, status)
         with open(path, 'wb') as f:
             f.write(data.encode('utf-8'))
         return data
@@ -86,7 +87,7 @@ def find_all_pages_in_data(data: str) -> typing.Iterable[str]:
 
 def find_all_pages(base: str, url: str) -> typing.Iterable[str]:
     print('Getting subsites from', url)
-    data = geturl(base + url)
+    data = geturl(base + url, '')
     # print(len(list(list_all_cdata(data))))
     yield data
     for r in resubsitenext_json.finditer(data):
@@ -122,8 +123,8 @@ class Item:
         return None
 
 
-def collect_single_item(base: str, url: str) -> Item:
-    data = geturl(base + url)
+def collect_single_item(base: str, url: str, status: str) -> Item:
+    data = geturl(base + url, status)
     r = redata.search(data)
     ga = regallery.search(data)
     if ga is not None:
@@ -136,9 +137,10 @@ def collect_single_item(base: str, url: str) -> Item:
         return Item(url, [], None)
 
 
-def collect_items(base: str, items: typing.Iterable[str]) -> typing.Iterable[Item]:
-    for url in items:
-        yield collect_single_item(base, url)
+def collect_items(base: str, items: typing.List[str]) -> typing.Iterable[Item]:
+    length = len(items)
+    for index, url in enumerate(items):
+        yield collect_single_item(base, url, '{}/{}'.format(index, length))
 
 
 class Result:
