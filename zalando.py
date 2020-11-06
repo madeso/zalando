@@ -301,7 +301,7 @@ def group_articles(articles: typing.Iterable[Article], material: typing.Optional
     articles_list.reverse()
 
     for key, group in itertools.groupby(articles_list, lambda article: article.info.material[material]):
-        yield ArticleGroup(key, list(group))
+        yield ArticleGroup(key + ' ' + material, list(group))
 
 
 def print_article_as_html_card(article: Article):
@@ -324,7 +324,7 @@ def paginate(mylist, count):
 
 def handle_write_html(args):
     articles = filter_articles(load_store().articles, tyg=args.tyg, material=args.material)
-    pages = paginate(list(articles), 3)
+    grouped_articles = group_articles(articles, args.material)
 
     print('<!doctype html>')
     print('<html lang="en">')
@@ -336,14 +336,17 @@ def handle_write_html(args):
     print('</head>')
     print('<body>')
     print('    <div class="container">')
-    for page in pages:
-        print('        <div class="row">')
-        for article in page:
-            print('            <div class="col-sm">')
-            if article is not None:
-                print_article_as_html_card(article)
-            print('            </div>')
-        print('        </div>')
+    for group in grouped_articles:
+        pages = paginate(list(group.articles), 3)
+        print('<h3>{}</h3>'.format(group.value))
+        for page in pages:
+            print('        <div class="row">')
+            for article in page:
+                print('            <div class="col-sm">')
+                if article is not None:
+                    print_article_as_html_card(article)
+                print('            </div>')
+            print('        </div>')
     print('    </div>')
     print('    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js" integrity="sha384-DfXdz2htPH0lsSSs5nCTpuj/zy4C+OGpamoFVy38MVBnE+IbbVYUew+OrCXaRkfj" crossorigin="anonymous"></script>')
     print('    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ho+j7jyWK8fNQe+A12Hb8AhRq26LrZ/JpcUGGOn+Y7RsweNrtN/tE3MoK7ZeZDyx" crossorigin="anonymous"></script>')
